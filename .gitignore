@@ -1,0 +1,30 @@
+# Local development tools (installed by scripts/setup-env.sh)
+tools/
+
+# Go build artefacts
+bin/
+*.test
+*.out
+
+# Kubebuilder / controller-gen generated binaries
+testbin/
+
+# Environment activation script (contains absolute paths)
+scripts/env.sh
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Helm chart lock
+helm/*/Chart.lock
+
+# Docker
+*.tar
+
+# Test coverage
+cover.out
+cover.html
