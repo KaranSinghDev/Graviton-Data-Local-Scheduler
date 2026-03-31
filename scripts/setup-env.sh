@@ -19,6 +19,7 @@ KUBECTL_VERSION="1.33.0"
 HELM_VERSION="3.17.2"
 # ──────────────────────────────────────────────────────────────────────────────
 
+mkdir -p "${TOOLS_DIR}/bin"
 echo "Installing tools to ${TOOLS_DIR}"
 
 # ── Go ────────────────────────────────────────────────────────────────────────
@@ -42,7 +43,6 @@ if [ ! -f "${TOOLS_DIR}/bin/kubebuilder" ]; then
 else
   echo "  kubebuilder already present"
 fi
-mkdir -p "${TOOLS_DIR}/bin"
 
 # ── kind ──────────────────────────────────────────────────────────────────────
 if [ ! -f "${TOOLS_DIR}/bin/kind" ]; then
