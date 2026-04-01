@@ -1,0 +1,9 @@
+apiVersion: hep.hep.cern.local/v1alpha1
+kind: PhysicsJob
+metadata:
+  labels:
+    app.kubernetes.io/name: data-gravity-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: physicsjob-sample
+spec:
+  # TODO(user): Add fields here

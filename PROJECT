@@ -8,4 +8,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: data-gravity-operator
 repo: github.com/KaranSinghDev/data-gravity-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: hep.cern.local
+  group: hep
+  kind: PhysicsJob
+  path: github.com/KaranSinghDev/data-gravity-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

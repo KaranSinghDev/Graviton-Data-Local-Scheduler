@@ -1,0 +1,29 @@
+# This rule is not used by the project data-gravity-operator itself.
+# It is provided to allow the cluster admin to help manage permissions for users.
+#
+# Grants read-only access to hep.hep.cern.local resources.
+# This role is intended for users who need visibility into these resources
+# without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: data-gravity-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: physicsjob-viewer-role
+rules:
+- apiGroups:
+  - hep.hep.cern.local
+  resources:
+  - physicsjobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - hep.hep.cern.local
+  resources:
+  - physicsjobs/status
+  verbs:
+  - get

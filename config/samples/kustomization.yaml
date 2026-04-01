@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- hep_v1alpha1_physicsjob.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
