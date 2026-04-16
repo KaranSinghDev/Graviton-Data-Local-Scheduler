@@ -5,7 +5,25 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - hep.hep.cern.local
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs/status
+  verbs:
+  - get
+- apiGroups:
+  - hep.cern.local
   resources:
   - physicsjobs
   verbs:
@@ -17,13 +35,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - hep.hep.cern.local
+  - hep.cern.local
   resources:
   - physicsjobs/finalizers
   verbs:
   - update
 - apiGroups:
-  - hep.hep.cern.local
+  - hep.cern.local
   resources:
   - physicsjobs/status
   verbs:

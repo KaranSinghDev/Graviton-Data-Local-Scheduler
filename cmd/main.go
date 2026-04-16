@@ -23,6 +23,7 @@ import (
 
 	hepv1alpha1 "github.com/KaranSinghDev/data-gravity-operator/api/v1alpha1"
 	"github.com/KaranSinghDev/data-gravity-operator/internal/controller"
+	"github.com/KaranSinghDev/data-gravity-operator/internal/storage"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -47,6 +48,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var rucioURL string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -65,6 +67,8 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&rucioURL, "rucio-url", "http://mock-rucio:8080",
+		"Base URL of the Rucio (or mock-rucio) replica API")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -187,8 +191,9 @@ func main() {
 	}
 
 	if err := (&controller.PhysicsJobReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Storage: storage.NewRucioClient(rucioURL),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PhysicsJob")
 		os.Exit(1)
