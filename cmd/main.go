@@ -23,6 +23,7 @@ import (
 
 	hepv1alpha1 "github.com/KaranSinghDev/data-gravity-operator/api/v1alpha1"
 	"github.com/KaranSinghDev/data-gravity-operator/internal/controller"
+	_ "github.com/KaranSinghDev/data-gravity-operator/internal/metrics"
 	"github.com/KaranSinghDev/data-gravity-operator/internal/storage"
 	// +kubebuilder:scaffold:imports
 )

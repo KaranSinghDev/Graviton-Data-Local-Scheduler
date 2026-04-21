@@ -10,6 +10,9 @@ type ReplicaInfo struct {
 	// SiteLabel is the value for the topology.cern.io/site node label,
 	// derived from the RSE name by taking the lowercase site prefix.
 	SiteLabel string
+	// DatasetSizeBytes is the estimated size of the dataset replica in bytes.
+	// Used to compute the physjob_data_transfer_avoided_bytes metric.
+	DatasetSizeBytes int64
 }
 
 // StorageTopologyClient resolves a Rucio dataset DID to the ordered list of

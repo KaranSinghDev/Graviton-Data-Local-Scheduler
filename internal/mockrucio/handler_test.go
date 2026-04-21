@@ -75,8 +75,8 @@ func TestHandler_AllSeedDIDs(t *testing.T) {
 			t.Errorf("DID %q: decode: %v", did, err)
 			continue
 		}
-		if len(resp) != len(rses) {
-			t.Errorf("DID %q: want %d RSEs, got %d", did, len(rses), len(resp))
+		if len(resp) != len(rses.RSEs) {
+			t.Errorf("DID %q: want %d RSEs, got %d", did, len(rses.RSEs), len(resp))
 		}
 	}
 }

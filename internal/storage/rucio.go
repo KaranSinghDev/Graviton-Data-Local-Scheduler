@@ -35,7 +35,8 @@ func NewRucioClient(baseURL string) *RucioClient {
 }
 
 type rucioReplica struct {
-	RSE string `json:"rse"`
+	RSE              string `json:"rse"`
+	DatasetSizeBytes int64  `json:"bytes,omitempty"`
 }
 
 // Resolve implements StorageTopologyClient by calling GET /dids/{scope}/{name}/replicas.
@@ -74,8 +75,9 @@ func (c *RucioClient) Resolve(ctx context.Context, did string) ([]ReplicaInfo, e
 	out := make([]ReplicaInfo, len(raw))
 	for i, r := range raw {
 		out[i] = ReplicaInfo{
-			RSE:       r.RSE,
-			SiteLabel: rseToSiteLabel(r.RSE),
+			RSE:              r.RSE,
+			SiteLabel:        rseToSiteLabel(r.RSE),
+			DatasetSizeBytes: r.DatasetSizeBytes,
 		}
 	}
 	return out, nil

@@ -7,12 +7,13 @@ import (
 )
 
 type replicaResponse struct {
-	RSE string `json:"rse"`
+	RSE              string `json:"rse"`
+	DatasetSizeBytes int64  `json:"bytes,omitempty"`
 }
 
 // NewHandler returns an http.Handler that implements the Rucio replica endpoint:
 //
-//	GET /dids/{scope}/{name}/replicas → []{"rse": "<RSE>"}
+//	GET /dids/{scope}/{name}/replicas → []{"rse": "<RSE>", "bytes": <size>}
 //
 // Only DIDs present in SeedData are served; all others return 404.
 func NewHandler() http.Handler {
@@ -24,7 +25,6 @@ func NewHandler() http.Handler {
 		}
 
 		// URL shape: /dids/{scope}/{name}/replicas
-		// After stripping the prefix, we expect: {scope}/{name}/replicas
 		trimmed := strings.TrimPrefix(r.URL.Path, "/dids/")
 		if !strings.HasSuffix(trimmed, "/replicas") {
 			http.NotFound(w, r)
@@ -32,7 +32,6 @@ func NewHandler() http.Handler {
 		}
 		didPath := strings.TrimSuffix(trimmed, "/replicas")
 
-		// Convert first "/" to ":" to form the DID scope:name
 		slashIdx := strings.Index(didPath, "/")
 		if slashIdx < 0 {
 			http.NotFound(w, r)
@@ -40,15 +39,15 @@ func NewHandler() http.Handler {
 		}
 		did := didPath[:slashIdx] + ":" + didPath[slashIdx+1:]
 
-		rses, ok := SeedData[did]
+		entry, ok := SeedData[did]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 
-		resp := make([]replicaResponse, len(rses))
-		for i, rse := range rses {
-			resp[i] = replicaResponse{RSE: rse}
+		resp := make([]replicaResponse, len(entry.RSEs))
+		for i, rse := range entry.RSEs {
+			resp[i] = replicaResponse{RSE: rse, DatasetSizeBytes: entry.DatasetSizeBytes}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
