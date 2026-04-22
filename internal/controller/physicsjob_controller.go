@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -16,6 +17,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	hepv1alpha1 "github.com/KaranSinghDev/data-gravity-operator/api/v1alpha1"
+	"github.com/KaranSinghDev/data-gravity-operator/internal/metrics"
 	"github.com/KaranSinghDev/data-gravity-operator/internal/scheduling"
 	"github.com/KaranSinghDev/data-gravity-operator/internal/storage"
 )
@@ -34,6 +36,21 @@ type PhysicsJobReconciler struct {
 // +kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
 
 func (r *PhysicsJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	start := time.Now()
+
+	result, err := r.reconcile(ctx, req)
+
+	// Always record duration and outcome.
+	metrics.ReconcileDuration.Observe(time.Since(start).Seconds())
+	if err != nil {
+		metrics.ReconcileTotal.WithLabelValues("error").Inc()
+	} else {
+		metrics.ReconcileTotal.WithLabelValues("success").Inc()
+	}
+	return result, err
+}
+
+func (r *PhysicsJobReconciler) reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	var pj hepv1alpha1.PhysicsJob
@@ -62,6 +79,7 @@ func (r *PhysicsJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, fmt.Errorf("resolve %q: %w", pj.Spec.Dataset, err)
 	}
 	if len(replicas) == 0 {
+		metrics.ResolutionFailuresTotal.WithLabelValues("RSENotFound").Inc()
 		return r.setFailed(ctx, &pj, "RSENotFound",
 			"no RSE holds a replica of dataset "+pj.Spec.Dataset)
 	}
@@ -69,11 +87,20 @@ func (r *PhysicsJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// DataLocal / ClosestSite: first replica = highest-priority site.
 	// AnyAvailable: still record the RSE for observability, but skip affinity.
 	replica := replicas[0]
+	policy := string(pj.Spec.SchedulingPolicy)
+	metrics.ResolvedTotal.WithLabelValues(replica.RSE, policy).Inc()
 
 	// ── Scheduling ───────────────────────────────────────────────────────────
 	var affinity *corev1.Affinity
 	if pj.Spec.SchedulingPolicy != hepv1alpha1.AnyAvailable {
 		affinity = scheduling.NodeAffinityForSite(replica.SiteLabel)
+
+		// Record estimated bytes not moved over the WAN.
+		if replica.DatasetSizeBytes > 0 {
+			metrics.DataTransferAvoidedBytes.WithLabelValues(replica.RSE).Add(
+				float64(replica.DatasetSizeBytes),
+			)
+		}
 	}
 
 	job := buildJob(&pj, affinity)
@@ -87,6 +114,7 @@ func (r *PhysicsJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	pj.Status.Phase = hepv1alpha1.PhaseScheduled
 	pj.Status.ResolvedRSE = replica.RSE
 	pj.Status.JobRef = job.Name
+	pj.Status.BytesTransferAvoided = replica.DatasetSizeBytes
 	if err := r.Status().Update(ctx, &pj); err != nil {
 		return ctrl.Result{}, fmt.Errorf("update Scheduled status: %w", err)
 	}
