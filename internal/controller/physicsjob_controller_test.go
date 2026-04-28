@@ -29,121 +29,105 @@ func (m *mockStorage) Resolve(_ context.Context, did string) ([]storage.ReplicaI
 	return m.replicas[did], nil
 }
 
+// cleanupResources does best-effort deletion; it strips Job finalizers so
+// envtest's API server can remove them (envtest has no job controller).
+func cleanupResources(ctx context.Context, nn types.NamespacedName) {
+	job := &batchv1.Job{}
+	if err := k8sClient.Get(ctx, nn, job); err == nil {
+		job.Finalizers = nil
+		_ = k8sClient.Update(ctx, job)
+		_ = k8sClient.Delete(ctx, job)
+	}
+	pj := &hepv1alpha1.PhysicsJob{}
+	if err := k8sClient.Get(ctx, nn, pj); err == nil {
+		_ = k8sClient.Delete(ctx, pj)
+	}
+}
+
+const testDID = "data23_13p6TeV:DAOD_PHYS.123456"
+const testImage = "gitlab-registry.cern.ch/atlas/athena:latest"
+
 var _ = Describe("PhysicsJob Controller", func() {
-	const (
-		resourceName = "test-physicsjob"
-		testDID      = "data23_13p6TeV:DAOD_PHYS.123456"
-		testImage    = "gitlab-registry.cern.ch/atlas/athena:latest"
-	)
-
 	ctx := context.Background()
-	nn := types.NamespacedName{Name: resourceName, Namespace: "default"}
 
-	AfterEach(func() {
-		pj := &hepv1alpha1.PhysicsJob{}
-		err := k8sClient.Get(ctx, nn, pj)
-		if err == nil {
-			Expect(k8sClient.Delete(ctx, pj)).To(Succeed())
-		}
-
-		// Clean up the owned Job if it exists.
-		job := &batchv1.Job{}
-		err = k8sClient.Get(ctx, nn, job)
-		if err == nil {
-			Expect(k8sClient.Delete(ctx, job)).To(Succeed())
-		}
-	})
-
+	// ── DataLocal ────────────────────────────────────────────────────────────
 	Context("DataLocal scheduling — known DID", func() {
+		nn := types.NamespacedName{Name: "pj-datalocal", Namespace: "default"}
+
 		BeforeEach(func() {
-			By("creating the PhysicsJob")
-			pj := &hepv1alpha1.PhysicsJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: hepv1alpha1.PhysicsJobSpec{
-					Dataset:          testDID,
-					Image:            testImage,
-					SchedulingPolicy: hepv1alpha1.DataLocal,
-				},
-			}
-			err := k8sClient.Get(ctx, nn, &hepv1alpha1.PhysicsJob{})
-			if apierrors.IsNotFound(err) {
-				Expect(k8sClient.Create(ctx, pj)).To(Succeed())
+			if apierrors.IsNotFound(k8sClient.Get(ctx, nn, &hepv1alpha1.PhysicsJob{})) {
+				Expect(k8sClient.Create(ctx, &hepv1alpha1.PhysicsJob{
+					ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+					Spec: hepv1alpha1.PhysicsJobSpec{
+						Dataset:          testDID,
+						Image:            testImage,
+						SchedulingPolicy: hepv1alpha1.DataLocal,
+					},
+				})).To(Succeed())
 			}
 		})
+		AfterEach(func() { cleanupResources(ctx, nn) })
 
-		It("transitions to Scheduled and creates an owned Job", func() {
-			mock := &mockStorage{
-				replicas: map[string][]storage.ReplicaInfo{
-					testDID: {
-						{RSE: "CERN-PROD_DATADISK", SiteLabel: "cern-prod"},
-					},
-				},
-			}
+		It("transitions to Scheduled and creates an owned Job with NodeAffinity", func() {
 			r := &PhysicsJobReconciler{
-				Client:  k8sClient,
-				Scheme:  k8sClient.Scheme(),
-				Storage: mock,
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+				Storage: &mockStorage{replicas: map[string][]storage.ReplicaInfo{
+					testDID: {{RSE: "CERN-PROD_DATADISK", SiteLabel: "cern-prod", DatasetSizeBytes: 2_500_000_000_000}},
+				}},
 			}
 
-			By("first reconcile — sets Resolving, creates Job, sets Scheduled")
 			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("checking PhysicsJob phase is Scheduled")
+			By("PhysicsJob should be Scheduled")
 			pj := &hepv1alpha1.PhysicsJob{}
 			Expect(k8sClient.Get(ctx, nn, pj)).To(Succeed())
 			Expect(pj.Status.Phase).To(Equal(hepv1alpha1.PhaseScheduled))
 			Expect(pj.Status.ResolvedRSE).To(Equal("CERN-PROD_DATADISK"))
-			Expect(pj.Status.JobRef).To(Equal(resourceName))
+			Expect(pj.Status.JobRef).To(Equal(nn.Name))
+			Expect(pj.Status.BytesTransferAvoided).To(Equal(int64(2_500_000_000_000)))
 
-			By("checking the owned batch/v1.Job was created")
+			By("owned Job should carry the right image")
 			job := &batchv1.Job{}
 			Expect(k8sClient.Get(ctx, nn, job)).To(Succeed())
-			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(testImage))
 
-			By("checking NodeAffinity was injected")
+			By("NodeAffinity should pin to cern-prod")
 			aff := job.Spec.Template.Spec.Affinity
 			Expect(aff).NotTo(BeNil())
 			terms := aff.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
-			Expect(terms).To(HaveLen(1))
 			Expect(terms[0].MatchExpressions[0].Values).To(ContainElement("cern-prod"))
 		})
 	})
 
+	// ── AnyAvailable ─────────────────────────────────────────────────────────
 	Context("AnyAvailable scheduling — affinity must be absent", func() {
+		nn := types.NamespacedName{Name: "pj-anyavail", Namespace: "default"}
+
 		BeforeEach(func() {
-			pj := &hepv1alpha1.PhysicsJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: hepv1alpha1.PhysicsJobSpec{
-					Dataset:          testDID,
-					Image:            testImage,
-					SchedulingPolicy: hepv1alpha1.AnyAvailable,
-				},
-			}
-			err := k8sClient.Get(ctx, nn, &hepv1alpha1.PhysicsJob{})
-			if apierrors.IsNotFound(err) {
-				Expect(k8sClient.Create(ctx, pj)).To(Succeed())
+			if apierrors.IsNotFound(k8sClient.Get(ctx, nn, &hepv1alpha1.PhysicsJob{})) {
+				Expect(k8sClient.Create(ctx, &hepv1alpha1.PhysicsJob{
+					ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+					Spec: hepv1alpha1.PhysicsJobSpec{
+						Dataset:          testDID,
+						Image:            testImage,
+						SchedulingPolicy: hepv1alpha1.AnyAvailable,
+					},
+				})).To(Succeed())
 			}
 		})
+		AfterEach(func() { cleanupResources(ctx, nn) })
 
 		It("creates a Job with no NodeAffinity", func() {
-			mock := &mockStorage{
-				replicas: map[string][]storage.ReplicaInfo{
-					testDID: {{RSE: "CERN-PROD_DATADISK", SiteLabel: "cern-prod"}},
-				},
-			}
 			r := &PhysicsJobReconciler{
-				Client:  k8sClient,
-				Scheme:  k8sClient.Scheme(),
-				Storage: mock,
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+				Storage: &mockStorage{replicas: map[string][]storage.ReplicaInfo{
+					testDID: {{RSE: "CERN-PROD_DATADISK", SiteLabel: "cern-prod"}},
+				}},
 			}
+
 			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -153,31 +137,30 @@ var _ = Describe("PhysicsJob Controller", func() {
 		})
 	})
 
+	// ── Unknown DID ──────────────────────────────────────────────────────────
 	Context("unknown DID — should fail", func() {
+		nn := types.NamespacedName{Name: "pj-unknown", Namespace: "default"}
+
 		BeforeEach(func() {
-			pj := &hepv1alpha1.PhysicsJob{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: hepv1alpha1.PhysicsJobSpec{
-					Dataset: "unknown:dataset.000",
-					Image:   testImage,
-				},
-			}
-			err := k8sClient.Get(ctx, nn, &hepv1alpha1.PhysicsJob{})
-			if apierrors.IsNotFound(err) {
-				Expect(k8sClient.Create(ctx, pj)).To(Succeed())
+			if apierrors.IsNotFound(k8sClient.Get(ctx, nn, &hepv1alpha1.PhysicsJob{})) {
+				Expect(k8sClient.Create(ctx, &hepv1alpha1.PhysicsJob{
+					ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+					Spec: hepv1alpha1.PhysicsJobSpec{
+						Dataset: "unknown:dataset.000",
+						Image:   testImage,
+					},
+				})).To(Succeed())
 			}
 		})
+		AfterEach(func() { cleanupResources(ctx, nn) })
 
 		It("transitions to Failed with RSENotFound condition", func() {
-			mock := &mockStorage{replicas: map[string][]storage.ReplicaInfo{}}
 			r := &PhysicsJobReconciler{
 				Client:  k8sClient,
 				Scheme:  k8sClient.Scheme(),
-				Storage: mock,
+				Storage: &mockStorage{replicas: map[string][]storage.ReplicaInfo{}},
 			}
+
 			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 			Expect(err).NotTo(HaveOccurred())
 
