@@ -17,7 +17,9 @@ func TestHandler_KnownDID(t *testing.T) {
 		t.Fatalf("want 200, got %d", rec.Code)
 	}
 
-	var resp []struct{ RSE string `json:"rse"` }
+	var resp []struct {
+		RSE string `json:"rse"`
+	}
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -70,7 +72,9 @@ func TestHandler_AllSeedDIDs(t *testing.T) {
 			t.Errorf("DID %q: want 200, got %d", did, rec.Code)
 			continue
 		}
-		var resp []struct{ RSE string `json:"rse"` }
+		var resp []struct {
+			RSE string `json:"rse"`
+		}
 		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 			t.Errorf("DID %q: decode: %v", did, err)
 			continue
