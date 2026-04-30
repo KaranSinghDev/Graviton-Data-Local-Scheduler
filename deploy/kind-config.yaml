@@ -1,0 +1,20 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: data-gravity
+nodes:
+- role: control-plane
+# Four workers, each labelled with a distinct WLCG site.
+# The operator injects NodeAffinity on topology.cern.io/site to route
+# compute to whichever worker matches the dataset's primary RSE.
+- role: worker
+  labels:
+    topology.cern.io/site: cern-prod
+- role: worker
+  labels:
+    topology.cern.io/site: bnl-osg2
+- role: worker
+  labels:
+    topology.cern.io/site: in2p3-cc
+- role: worker
+  labels:
+    topology.cern.io/site: triumf-lcg2

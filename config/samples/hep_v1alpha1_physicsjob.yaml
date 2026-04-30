@@ -1,9 +1,20 @@
-apiVersion: hep.hep.cern.local/v1alpha1
+apiVersion: hep.cern.local/v1alpha1
 kind: PhysicsJob
 metadata:
+  name: atlas-daod-phys-sample
+  namespace: default
   labels:
     app.kubernetes.io/name: data-gravity-operator
     app.kubernetes.io/managed-by: kustomize
-  name: physicsjob-sample
 spec:
-  # TODO(user): Add fields here
+  dataset: "data23_13p6TeV:DAOD_PHYS.123456"
+  image: "gitlab-registry.cern.ch/atlas/athena:24.0.12"
+  command: ["Reco_tf.py", "--inputAODFile", "/data/input.AOD.pool.root"]
+  schedulingPolicy: DataLocal
+  resources:
+    requests:
+      cpu: "2"
+      memory: "4Gi"
+    limits:
+      cpu: "4"
+      memory: "8Gi"
