@@ -1,0 +1,17 @@
+apiVersion: v2
+name: data-gravity-operator
+description: Kubernetes operator for data-locality-aware workload scheduling on WLCG data lakes.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+- kubernetes
+- operator
+- hep
+- cern
+- rucio
+- wlcg
+- data-locality
+home: https://github.com/KaranSinghDev/data-gravity-operator
+maintainers:
+- name: Karan Singh

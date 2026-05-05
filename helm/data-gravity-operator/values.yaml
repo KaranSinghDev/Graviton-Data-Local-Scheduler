@@ -1,0 +1,45 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/karansinghdev/data-gravity-operator
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+rucioURL: "http://rucio.cern.ch"
+
+leaderElect: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+metrics:
+  # Port exposed by the operator for Prometheus scraping.
+  port: 8443
+  secure: true
+
+mockRucio:
+  # Deploy the in-cluster mock Rucio server for testing.
+  enabled: false
+  image:
+    repository: ghcr.io/karansinghdev/data-gravity-operator
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
+
+serviceAccount:
+  name: data-gravity-operator
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

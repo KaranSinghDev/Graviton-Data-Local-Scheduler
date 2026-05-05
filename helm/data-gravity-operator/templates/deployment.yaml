@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    control-plane: controller-manager
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+        app.kubernetes.io/name: {{ .Chart.Name }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - name: manager
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["/manager"]
+        args:
+        - --rucio-url={{ .Values.rucioURL }}
+        - --metrics-bind-address=:{{ .Values.metrics.port }}
+        - --metrics-secure={{ .Values.metrics.secure }}
+        - --health-probe-bind-address=:8081
+        - --leader-elect={{ .Values.leaderElect }}
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.metrics.port }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.mockRucio.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-rucio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: mock-rucio
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-rucio
+  template:
+    metadata:
+      labels:
+        app: mock-rucio
+    spec:
+      containers:
+      - name: mock-rucio
+        image: "{{ .Values.mockRucio.image.repository }}:{{ .Values.mockRucio.image.tag }}"
+        imagePullPolicy: {{ .Values.mockRucio.image.pullPolicy }}
+        command: ["/mock-rucio"]
+        args: ["--addr=:8080"]
+        ports:
+        - containerPort: 8080
+        resources:
+          {{- toYaml .Values.mockRucio.resources | nindent 10 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-rucio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: mock-rucio
+spec:
+  selector:
+    app: mock-rucio
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+{{- end }}
