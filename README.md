@@ -1,121 +1,166 @@
 # data-gravity-operator
-// TODO(user): Add simple overview of use/purpose
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes Operator that implements **data-locality-aware workload scheduling**
+for distributed physics data lakes modelled on the WLCG/Rucio storage topology.
 
-## Getting Started
+When a physicist submits a `PhysicsJob` referencing a Rucio dataset
+(`scope:name` format), the operator:
 
-### Prerequisites
-- go version v1.24.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+1. Resolves which RSE (Rucio Storage Element) holds the primary replica
+2. Maps that RSE to a Kubernetes node via the `topology.cern.io/site` label
+3. Creates an owned `batch/v1.Job` with `NodeAffinity` constraints injected —
+   so compute runs *co-located with the data*, avoiding WAN transfers entirely
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+Standard `kube-scheduler` has no storage-topology awareness. This operator
+provides that injection automatically, closing the gap between data placement
+(Rucio) and compute placement (Kubernetes).
 
-```sh
-make docker-build docker-push IMG=<some-registry>/data-gravity-operator:tag
+---
+
+## Quickstart — local kind cluster
+
+```bash
+# 1. Install local toolchain (Go 1.24, kubebuilder, kind, kubectl, helm)
+bash scripts/setup-env.sh
+source scripts/env.sh
+
+# 2. Spin up a 4-node kind cluster with WLCG site labels + deploy mock-rucio
+bash scripts/setup-kind.sh
+
+# 3. Run the end-to-end demo
+bash scripts/demo.sh
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+The kind cluster comes with four worker nodes pre-labelled:
 
-**Install the CRDs into the cluster:**
+| Node | Label |
+|------|-------|
+| worker-0 | `topology.cern.io/site=cern-prod` |
+| worker-1 | `topology.cern.io/site=bnl-osg2` |
+| worker-2 | `topology.cern.io/site=in2p3-cc` |
+| worker-3 | `topology.cern.io/site=triumf-lcg2` |
 
-```sh
-make install
+---
+
+## Custom Resource: PhysicsJob
+
+```yaml
+apiVersion: hep.cern.local/v1alpha1
+kind: PhysicsJob
+metadata:
+  name: atlas-daod-sample
+spec:
+  # Rucio DID — scope:name format
+  dataset: "data23_13p6TeV:DAOD_PHYS.123456"
+  # Container image for the compute workload
+  image: "gitlab-registry.cern.ch/atlas/athena:24.0.12"
+  command: ["Reco_tf.py", "--inputAODFile", "/data/input.AOD.pool.root"]
+  # DataLocal | ClosestSite | AnyAvailable
+  schedulingPolicy: DataLocal
+  resources:
+    requests:
+      cpu: "2"
+      memory: "4Gi"
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+Inspect the job as it progresses:
 
-```sh
-make deploy IMG=<some-registry>/data-gravity-operator:tag
+```bash
+kubectl get pj   # shortName
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
-kubectl apply -k config/samples/
+```
+NAME               DATASET                                  PHASE       RSE                   NODE
+atlas-daod-sample  data23_13p6TeV:DAOD_PHYS.123456         Scheduled   CERN-PROD_DATADISK    worker-0
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+---
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+## Scheduling policies
 
-```sh
-kubectl delete -k config/samples/
+| Policy | Behaviour |
+|--------|-----------|
+| `DataLocal` (default) | Hard-pins compute to the node whose `topology.cern.io/site` matches the primary RSE |
+| `ClosestSite` | Same as DataLocal; extension point for geo-distance ranking across replicas |
+| `AnyAvailable` | No affinity injected; scheduler places freely; RSE still recorded for observability |
+
+---
+
+## Development
+
+```bash
+# Regenerate deepcopy + CRD YAML after editing types
+make generate manifests
+
+# Run unit tests + envtest controller suite
+make test
+
+# Build Docker image (contains both manager and mock-rucio binaries)
+make docker-build IMG=ghcr.io/karansinghdev/data-gravity-operator:dev
+
+# Deploy via Helm (production)
+helm install data-gravity helm/data-gravity-operator/ \
+  --namespace data-gravity-system --create-namespace \
+  --set rucioURL=https://rucio.cern.ch \
+  --set mockRucio.enabled=false
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+---
 
-```sh
-make uninstall
+## Prometheus metrics
+
+| Metric | Type | Labels |
+|--------|------|--------|
+| `physjob_reconcile_total` | Counter | `result` |
+| `physjob_reconcile_duration_seconds` | Histogram | — |
+| `physjob_resolved_total` | Counter | `rse`, `policy` |
+| `physjob_resolution_failures_total` | Counter | `reason` |
+| `physjob_data_transfer_avoided_bytes` | Counter | `rse` |
+
+The `physjob_data_transfer_avoided_bytes` counter accumulates estimated bytes
+of WAN transfer eliminated by data-local scheduling. For a typical ATLAS DAOD
+dataset (~2.5 TB), a single data-local job avoids 2.5 TB of inter-site traffic.
+
+---
+
+## Architecture
+
+See [`docs/architecture.md`](docs/architecture.md) for the full component diagram,
+reconcile loop pseudocode, and data-flow explanation.
+
+---
+
+## Repository layout
+
+```
+api/v1alpha1/               CRD types (PhysicsJobSpec, PhysicsJobStatus, Phase enum)
+internal/controller/        Reconciler + Ginkgo/envtest suite (55 % coverage)
+internal/storage/           StorageTopologyClient interface + Rucio HTTP client
+internal/scheduling/        NodeAffinity builder (100 % coverage)
+internal/metrics/           Prometheus registrations
+internal/mockrucio/         Mock Rucio API — 9 ATLAS/CMS/LHCb datasets (80 % coverage)
+cmd/main.go                 Manager entrypoint (--rucio-url flag)
+cmd/mock-rucio/main.go      Standalone mock-rucio server
+config/crd/bases/           Generated CRD YAML
+config/rbac/                Generated ClusterRole
+config/samples/             Example PhysicsJob CRs
+deploy/                     kind cluster config + mock-rucio Kubernetes manifest
+helm/data-gravity-operator/ Helm chart (CRD in crds/, RBAC, Deployment, optional mock)
+scripts/                    setup-env.sh  setup-kind.sh  demo.sh
+docs/                       Architecture doc + Mermaid diagram
 ```
 
-**UnDeploy the controller from the cluster:**
+---
 
-```sh
-make undeploy
-```
+## Tech stack
 
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/data-gravity-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/data-gravity-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v1-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
+| Component | Version |
+|-----------|---------|
+| Go | 1.24 |
+| controller-runtime | v0.21 |
+| Kubernetes API | v0.33 (1.33) |
+| Ginkgo / Gomega | v2 / v1 |
+| Prometheus client | v1.22 |
+| kubebuilder scaffold | v4.6 |
+| kind | v0.26 |
+| Helm | 3.17 |
