@@ -1,0 +1,27 @@
+# Helm values for the kind-based local demo.
+#   helm install ... --values helm/data-gravity-operator/values-kind.yaml
+#
+# Assumes the operator image has been built locally and loaded into kind:
+#   docker build -t data-gravity-operator:dev .
+#   kind load docker-image data-gravity-operator:dev --name data-gravity
+
+image:
+  repository: data-gravity-operator
+  tag: dev
+  pullPolicy: Never
+
+mockRucio:
+  enabled: true
+  image:
+    repository: data-gravity-operator
+    tag: dev
+    pullPolicy: Never
+
+# Single-replica demo, no leader election.
+replicaCount: 1
+leaderElect: false
+
+# Plain HTTP metrics; production deployments should use TLS via cert-manager.
+metrics:
+  port: 8080
+  secure: false

@@ -29,7 +29,11 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["/manager"]
         args:
+        {{- if .Values.mockRucio.enabled }}
+        - --rucio-url=http://mock-rucio.{{ .Release.Namespace }}.svc:8080
+        {{- else }}
         - --rucio-url={{ .Values.rucioURL }}
+        {{- end }}
         - --metrics-bind-address=:{{ .Values.metrics.port }}
         - --metrics-secure={{ .Values.metrics.secure }}
         - --health-probe-bind-address=:8081
