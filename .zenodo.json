@@ -1,0 +1,43 @@
+{
+    "title": "data-gravity-operator: Data-Locality-Aware Workload Scheduling for Kubernetes on WLCG Data Lakes",
+    "description": "<p>A Kubernetes operator that injects topology-aware <code>NodeAffinity</code> constraints into compute Jobs based on <a href=\"https://rucio.cern.ch/\">Rucio</a> dataset replica locations, enabling data-local compute scheduling on WLCG-style data lakes.</p><p>The operator introduces a <code>PhysicsJob</code> custom resource. Submitting a <code>PhysicsJob</code> with a Rucio DID (<code>scope:name</code>) causes the operator to (1) resolve the dataset's primary Rucio Storage Element, (2) map that RSE to a Kubernetes node via the <code>topology.cern.io/site</code> label, and (3) create an owned <code>batch/v1.Job</code> with a <code>NodeAffinity</code> requirement matching that site label. Compute therefore runs co-located with the data, eliminating the inter-site WAN transfer that would otherwise be incurred by the default <code>kube-scheduler</code>.</p><p>Implemented in Go using the kubebuilder/controller-runtime framework. Includes a mock Rucio replica server with seed data covering ATLAS, CMS, and LHCb dataset classes, an end-to-end demo against a 4-node kind cluster, a Helm chart, and Prometheus instrumentation for reconcile lifecycle, RSE resolution, and bytes-of-WAN-transfer-avoided.</p>",
+    "creators": [
+        {
+            "name": "Singh, Karan",
+            "orcid": "0000-0000-0000-0000",
+            "affiliation": "Independent Researcher"
+        }
+    ],
+    "keywords": [
+        "kubernetes-operator",
+        "data-locality",
+        "rucio",
+        "wlcg",
+        "cern",
+        "high-energy-physics",
+        "distributed-computing",
+        "go",
+        "kubebuilder",
+        "controller-runtime"
+    ],
+    "license": "Apache-2.0",
+    "upload_type": "software",
+    "access_right": "open",
+    "communities": [
+        {
+            "identifier": "zenodo"
+        }
+    ],
+    "related_identifiers": [
+        {
+            "identifier": "https://github.com/KaranSinghDev/data-gravity-operator",
+            "relation": "isSupplementTo",
+            "scheme": "url"
+        },
+        {
+            "identifier": "https://rucio.cern.ch/",
+            "relation": "references",
+            "scheme": "url"
+        }
+    ]
+}

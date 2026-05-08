@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+title: "data-gravity-operator: Data-Locality-Aware Workload Scheduling for Kubernetes on WLCG Data Lakes"
+message: "If you use this software, please cite it using the metadata below."
+type: software
+authors:
+  - given-names: Karan
+    family-names: Singh
+    email: karansingh25822@gmail.com
+    # ORCID: replace 0000-0000-0000-0000 with your actual ORCID identifier
+    # before tagging the first release that you want to deposit on Zenodo.
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+repository-code: "https://github.com/KaranSinghDev/data-gravity-operator"
+license: Apache-2.0
+version: "0.1.0"
+date-released: "2026-05-09"
+keywords:
+  - kubernetes-operator
+  - data-locality
+  - rucio
+  - wlcg
+  - cern
+  - high-energy-physics
+  - distributed-computing
+  - go
+  - kubebuilder
+abstract: >-
+  data-gravity-operator is a Kubernetes operator that implements
+  data-locality-aware workload scheduling for distributed physics data
+  lakes modelled on the Worldwide LHC Computing Grid (WLCG) and the
+  Rucio data-management system. It introduces a PhysicsJob custom
+  resource: when a user submits a PhysicsJob referencing a Rucio
+  dataset identifier (DID), the operator resolves the dataset's
+  primary Rucio Storage Element (RSE), maps that RSE to a Kubernetes
+  node via the topology.cern.io/site label, and creates an owned
+  batch/v1.Job with NodeAffinity constraints injected so compute runs
+  co-located with the data. This avoids inter-site WAN transfers that
+  the standard kube-scheduler would otherwise incur.
+references:
+  - type: software
+    title: "Rucio: Scientific Data Management"
+    url: "https://github.com/rucio/rucio"
+  - type: software
+    title: "Kubernetes controller-runtime"
+    url: "https://github.com/kubernetes-sigs/controller-runtime"
+  - type: software
+    title: "Kubebuilder"
+    url: "https://github.com/kubernetes-sigs/kubebuilder"
