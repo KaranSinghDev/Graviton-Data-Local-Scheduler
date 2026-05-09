@@ -1,5 +1,11 @@
 # data-gravity-operator
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Tests](https://github.com/KaranSinghDev/data-gravity-operator/actions/workflows/test.yml/badge.svg)](https://github.com/KaranSinghDev/data-gravity-operator/actions/workflows/test.yml)
+[![Lint](https://github.com/KaranSinghDev/data-gravity-operator/actions/workflows/lint.yml/badge.svg)](https://github.com/KaranSinghDev/data-gravity-operator/actions/workflows/lint.yml)
+[![Container](https://img.shields.io/badge/container-ghcr.io-blue.svg)](https://github.com/KaranSinghDev/data-gravity-operator/pkgs/container/data-gravity-operator)
+[![Helm Chart](https://img.shields.io/badge/helm-chart-0F1689.svg?logo=helm)](https://karansinghdev.github.io/data-gravity-operator)
+
 A Kubernetes Operator that implements **data-locality-aware workload scheduling**
 for distributed physics data lakes modelled on the WLCG/Rucio storage topology.
 
@@ -17,21 +23,42 @@ provides that injection automatically, closing the gap between data placement
 
 ---
 
-## Quickstart — local kind cluster
+## Installation
+
+### Production — Helm chart
 
 ```bash
-# 1. Install local toolchain (Go 1.24, kubebuilder, kind, kubectl, helm)
+helm repo add data-gravity https://karansinghdev.github.io/data-gravity-operator
+helm repo update
+
+helm install data-gravity data-gravity/data-gravity-operator \
+  --namespace data-gravity-system --create-namespace \
+  --set rucioURL=https://rucio.cern.ch
+```
+
+The container image is hosted at
+`ghcr.io/karansinghdev/data-gravity-operator` and supports `linux/amd64`
+and `linux/arm64`.
+
+### Local quickstart — kind cluster
+
+```bash
+# 1. Install the local toolchain (Go 1.24, kubebuilder, kind, kubectl, helm)
 bash scripts/setup-env.sh
 source scripts/env.sh
 
-# 2. Spin up a 4-node kind cluster with WLCG site labels + deploy mock-rucio
+# 2. Spin up a 4-node kind cluster + build/load operator image
 bash scripts/setup-kind.sh
 
-# 3. Run the end-to-end demo
+# 3. End-to-end demo: helm install + submit PhysicsJob + verify NodeAffinity routing
 bash scripts/demo.sh
 ```
 
-The kind cluster comes with four worker nodes pre-labelled:
+For development against a running kind cluster (skip the docker rebuild
+loop), use `bash scripts/dev-run.sh` to run the manager binary on your
+host with a port-forwarded mock-rucio.
+
+The kind cluster has four worker nodes labelled with realistic WLCG sites:
 
 | Node | Label |
 |------|-------|
@@ -63,10 +90,10 @@ spec:
       memory: "4Gi"
 ```
 
-Inspect the job as it progresses:
+Inspect:
 
 ```bash
-kubectl get pj   # shortName
+kubectl get pj   # shortName for physicsjob
 ```
 
 ```
@@ -81,29 +108,8 @@ atlas-daod-sample  data23_13p6TeV:DAOD_PHYS.123456         Scheduled   CERN-PROD
 | Policy | Behaviour |
 |--------|-----------|
 | `DataLocal` (default) | Hard-pins compute to the node whose `topology.cern.io/site` matches the primary RSE |
-| `ClosestSite` | Same as DataLocal; extension point for geo-distance ranking across replicas |
+| `ClosestSite` | Same as DataLocal; extension point for a geo-distance ranking across replicas |
 | `AnyAvailable` | No affinity injected; scheduler places freely; RSE still recorded for observability |
-
----
-
-## Development
-
-```bash
-# Regenerate deepcopy + CRD YAML after editing types
-make generate manifests
-
-# Run unit tests + envtest controller suite
-make test
-
-# Build Docker image (contains both manager and mock-rucio binaries)
-make docker-build IMG=ghcr.io/karansinghdev/data-gravity-operator:dev
-
-# Deploy via Helm (production)
-helm install data-gravity helm/data-gravity-operator/ \
-  --namespace data-gravity-system --create-namespace \
-  --set rucioURL=https://rucio.cern.ch \
-  --set mockRucio.enabled=false
-```
 
 ---
 
@@ -125,8 +131,8 @@ dataset (~2.5 TB), a single data-local job avoids 2.5 TB of inter-site traffic.
 
 ## Architecture
 
-See [`docs/architecture.md`](docs/architecture.md) for the full component diagram,
-reconcile loop pseudocode, and data-flow explanation.
+See [`docs/architecture.md`](docs/architecture.md) for the full component
+diagram, reconcile-loop pseudocode, and data-flow explanation.
 
 ---
 
@@ -134,19 +140,17 @@ reconcile loop pseudocode, and data-flow explanation.
 
 ```
 api/v1alpha1/               CRD types (PhysicsJobSpec, PhysicsJobStatus, Phase enum)
-internal/controller/        Reconciler + Ginkgo/envtest suite (55 % coverage)
+internal/controller/        Reconciler + Ginkgo/envtest suite
 internal/storage/           StorageTopologyClient interface + Rucio HTTP client
-internal/scheduling/        NodeAffinity builder (100 % coverage)
+internal/scheduling/        NodeAffinity builder
 internal/metrics/           Prometheus registrations
-internal/mockrucio/         Mock Rucio API — 9 ATLAS/CMS/LHCb datasets (80 % coverage)
+internal/mockrucio/         Mock Rucio API — 9 ATLAS/CMS/LHCb datasets
 cmd/main.go                 Manager entrypoint (--rucio-url flag)
 cmd/mock-rucio/main.go      Standalone mock-rucio server
-config/crd/bases/           Generated CRD YAML
-config/rbac/                Generated ClusterRole
-config/samples/             Example PhysicsJob CRs
+config/                     Generated CRD + RBAC + sample CR
 deploy/                     kind cluster config + mock-rucio Kubernetes manifest
 helm/data-gravity-operator/ Helm chart (CRD in crds/, RBAC, Deployment, optional mock)
-scripts/                    setup-env.sh  setup-kind.sh  demo.sh
+scripts/                    setup-env.sh  setup-kind.sh  demo.sh  dev-run.sh
 docs/                       Architecture doc + Mermaid diagram
 ```
 
@@ -164,3 +168,40 @@ docs/                       Architecture doc + Mermaid diagram
 | kubebuilder scaffold | v4.6 |
 | kind | v0.26 |
 | Helm | 3.17 |
+
+---
+
+## Citing this work
+
+If you use `data-gravity-operator` in academic work, please cite it via the
+metadata in [`CITATION.cff`](CITATION.cff). Each tagged GitHub release is
+archived on Zenodo with a DOI; replace the DOI below with the version-specific
+one for the release you used.
+
+```bibtex
+@software{singh_data_gravity_operator_2026,
+  author       = {Singh, Karan},
+  title        = {data-gravity-operator: Data-Locality-Aware Workload
+                  Scheduling for Kubernetes on WLCG Data Lakes},
+  year         = 2026,
+  publisher    = {Zenodo},
+  version      = {0.1.0},
+  url          = {https://github.com/KaranSinghDev/data-gravity-operator}
+}
+```
+
+---
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup and
+contribution guidelines. Maintainers cutting a release should follow
+[`RELEASING.md`](RELEASING.md).
+
+---
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE) for
+the full text. All third-party dependencies are also Apache 2.0 or
+compatible permissive licenses.
