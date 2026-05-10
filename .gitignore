@@ -41,3 +41,6 @@ helm/*/Chart.lock
 # Coverage reports
 cover.out
 cover.html
+
+# Generated install bundle (built by `make build-installer`)
+dist/

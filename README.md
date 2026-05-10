@@ -25,7 +25,23 @@ provides that injection automatically, closing the gap between data placement
 
 ## Installation
 
-### Production — Helm chart
+Three install paths, in order of simplicity. All require an existing
+Kubernetes (or OpenShift) cluster ≥ v1.28. The container image is
+multi-arch (`linux/amd64`, `linux/arm64`) and hosted at
+`ghcr.io/karansinghdev/data-gravity-operator`.
+
+### Quick install — one-liner (kubectl)
+
+```bash
+kubectl apply -f \
+  https://github.com/KaranSinghDev/data-gravity-operator/releases/latest/download/install.yaml
+```
+
+This installs the namespace, CRD, RBAC, and the operator Deployment in
+one shot. Edit the deployment afterwards to set `--rucio-url` for your
+environment, or override via `kubectl set env`.
+
+### Production install — Helm chart
 
 ```bash
 helm repo add data-gravity https://karansinghdev.github.io/data-gravity-operator
@@ -36,11 +52,11 @@ helm install data-gravity data-gravity/data-gravity-operator \
   --set rucioURL=https://rucio.cern.ch
 ```
 
-The container image is hosted at
-`ghcr.io/karansinghdev/data-gravity-operator` and supports `linux/amd64`
-and `linux/arm64`.
+The Helm path gives you `values.yaml` for image overrides, replica
+count, leader election, metrics TLS, and an in-chart mock-rucio toggle
+(`--set mockRucio.enabled=true`) for evaluation environments.
 
-### Local quickstart — kind cluster
+### Local evaluation — kind cluster
 
 ```bash
 # 1. Install the local toolchain (Go 1.24, kubebuilder, kind, kubectl, helm)
